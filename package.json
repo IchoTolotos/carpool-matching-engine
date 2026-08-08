@@ -1,0 +1,49 @@
+{
+  "name": "carpool-matching-engine",
+  "version": "0.1.0",
+  "description": "Provider-neutral, constraint-aware carpool assignment engine extracted from RideAssign.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IchoTolotos/carpool-matching-engine.git"
+  },
+  "homepage": "https://github.com/IchoTolotos/carpool-matching-engine#readme",
+  "bugs": {
+    "url": "https://github.com/IchoTolotos/carpool-matching-engine/issues"
+  },
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=22.22.0",
+    "pnpm": ">=11.20.0 <12"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "biome check . && tsc --noEmit && vitest run && tsc -p tsconfig.build.json",
+    "demo": "tsc -p tsconfig.build.json && node examples/basic.mjs",
+    "format": "biome format --write .",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.8",
+    "@types/node": "22.19.17",
+    "typescript": "5.9.3",
+    "vitest": "4.1.5"
+  }
+}
