@@ -1,115 +1,127 @@
 # Carpool Matching Engine
 
-A provider-neutral, constraint-aware passenger-to-driver assignment engine extracted from the
-production matching work behind RideAssign.
+A provider-neutral Python core for jointly assigning passenger shipments to vehicles and ordering
+their pickup and delivery stops. It is a technical extraction of matching work developed for
+RideAssign, with application policy and routing-provider operations kept outside the package.
 
-> **Status:** private technical extraction. The package is intentionally marked `private` and is
-> currently all-rights-reserved while the future open-source license and public-release scope are
-> reviewed.
+> **Status:** private technical extraction. Copyright is all rights reserved. No permission is
+> granted to use, copy, modify, publish, distribute, sublicense, or sell this software while a
+> future open-source license and public-release scope are under review.
 
 ## What it demonstrates
 
-- pinned passengers reserve real driver capacity before optional matching
-- group-compatibility policies are applied before candidate scoring
-- passenger/driver assignment uses minimum-cost maximum flow
-- candidate costs combine a route-projection detour lower bound, pickup distance, and route progress
-- a routing provider validates the real ordered route after assignment
-- over-limit routes are repaired by blacklisting costly passenger/driver edges and solving again
-- full-coverage mode fails explicitly when every passenger cannot be placed
-- routing responses and routing-call budgets are strict contracts, with no hidden fallback
+- the application compiles product and business policy into explicit vehicles, shipments,
+  constraints, penalties, and a bounded search portfolio
+- a provider adapter supplies one complete directed duration-and-distance matrix for every problem
+  location
+- the core validates those contracts before optimization
+- OR-Tools jointly chooses vehicle assignment and pickup/delivery ordering
+- capacity, pickup-before-delivery, vehicle eligibility, time windows, stop limits, route-duration
+  limits, required shipments, and optional-shipment drop penalties are represented explicitly
+- the result contains ordered routes, explicit dropped shipment ids, an objective value, total
+  runtime, and diagnostics for every search attempt
 
-The engine contains no database access, web framework, authentication, billing, analytics, or
-vendor SDK. Applications provide a `RoutingProvider` implementation and persist the result however
-they choose.
+The package contains no database access, web framework, authentication, billing, analytics,
+application configuration, or routing-vendor SDK. See [the architecture](docs/architecture.md) and
+[algorithm boundaries](docs/algorithm.md).
 
-## Algorithm
+## Correctness boundary
 
-```mermaid
-flowchart LR
-  A["Validate participants and constraints"] --> B["Build each driver's required baseline"]
-  B --> C["Project passengers onto baseline routes"]
-  C --> D["Generate compatible candidate edges"]
-  D --> E["Solve minimum-cost maximum flow"]
-  E --> F["Ask routing provider for ordered routes"]
-  F --> G{"Detour constraints satisfied?"}
-  G -- Yes --> H["Return assignments, routes, and diagnostics"]
-  G -- No --> I["Blacklist one harmful edge per violating route"]
-  I --> E
-```
-
-This is a hybrid optimization strategy, not a claim of globally optimal vehicle routing. The flow
-stage optimizes the assignment surrogate exactly; route ordering and repair depend on the supplied
-routing provider and the bounded repair process. See [docs/algorithm.md](docs/algorithm.md).
+The engine runs a caller-defined sequence of time-bounded OR-Tools search attempts and returns the
+best feasible objective they find. A feasible result satisfies the modeled constraints, but a
+time-bounded search result is **not proof of global optimality**. The objective also reflects the
+policy compiled into costs and penalties; it is not a universal measure of carpool quality.
 
 ## Development
 
-Requirements: Node.js 22.22 or newer and pnpm 11.20 or newer within pnpm 11.
+Requirements: Python 3.12 through 3.14.
 
 ```bash
-pnpm install
-pnpm check
-pnpm demo
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"
+make check
 ```
 
-`pnpm check` runs formatting/lint checks, strict TypeScript, deterministic tests, and the package
-build.
+`make check` runs Ruff, strict mypy, deterministic tests, coverage checks, and the package build.
 
 ## API sketch
 
-```ts
-import { matchCarpools, type MatchingProblem, type RoutingProvider } from "carpool-matching-engine";
+```python
+from carpool_matching_engine import (
+    Coordinate,
+    Location,
+    MatchingProblem,
+    SearchConfig,
+    Shipment,
+    Vehicle,
+    solve_with_provider,
+)
 
-const routingProvider: RoutingProvider = yourRoutingAdapter;
-const problem: MatchingProblem = {
-  destination: { latitude: 48.1372, longitude: 11.5756 },
-  drivers: [
-    {
-      id: "driver-1",
-      origin: { latitude: 48.125, longitude: 11.55 },
-      capacity: 3,
-      groupId: null,
-    },
-  ],
-  passengers: [
-    {
-      id: "passenger-1",
-      origin: { latitude: 48.13, longitude: 11.56 },
-      groupId: null,
-      pinnedDriverId: null,
-    },
-  ],
-  groupPolicy: "same-group",
-  mode: {
-    kind: "natural-carpool",
-    maxDetourSeconds: 900,
-    maxPickupDistanceKm: 3,
-  },
-  limits: { maxRepairRounds: 20, maxRoutingCalls: 500 },
-};
+locations = (
+    Location("driver-start", Coordinate(48.120, 11.540)),
+    Location("pickup", Coordinate(48.130, 11.560)),
+    Location("destination", Coordinate(48.140, 11.580)),
+)
+problem = MatchingProblem(
+    locations=locations,
+    vehicles=(
+        Vehicle(
+            id="vehicle-1",
+            start_location_id="driver-start",
+            end_location_id="destination",
+            capacity=3,
+        ),
+    ),
+    shipments=(
+        Shipment(
+            id="shipment-1",
+            pickup_location_id="pickup",
+            delivery_location_id="destination",
+            required=False,
+            drop_penalty=100_000,
+        ),
+    ),
+    time_horizon_seconds=7_200,
+)
 
-const result = await matchCarpools(problem, routingProvider);
+# Implement MatrixProvider with a production routing adapter. This synthetic helper is only for
+# examples and tests and must not be presented as a road-network router.
+from carpool_matching_engine.testing import StraightLineMatrixProvider
+
+result = solve_with_provider(
+    problem,
+    StraightLineMatrixProvider(),
+    SearchConfig.balanced(seconds_per_attempt=2),
+)
 ```
 
-`carpool-matching-engine/testing` exports a deterministic straight-line simulation provider for
-examples and tests. It evaluates every stop permutation, rejects more than eight stops, and must not
-be presented as a road-network router.
+`result.routes` contains each vehicle's ordered start, pickup, delivery, and end stops.
+`result.dropped_shipment_ids` makes non-service explicit. `result.diagnostics` exposes the selected
+objective, total runtime, and solved status, objective, and runtime for each configured attempt.
 
-## Routing-provider contract
+## Synthetic benchmark
 
-The provider receives an origin, destination, and unordered passenger stops. It must return:
+Run the fixed synthetic comparison from the repository root:
 
-- total route duration
-- route geometry
-- one duration per geometry segment, summing exactly to total duration
-- every requested stop id exactly once, in visit order
+```bash
+.venv/bin/python -m benchmarks.run
+```
 
-Malformed responses throw `MatchingEngineError` with `INVALID_ROUTING_RESPONSE`. The engine does not
-guess missing geometry, ordering, or durations.
+It compares the OR-Tools engine with a deterministic greedy insertion baseline and reports
+coverage, objective, matrix travel cost, and elapsed time. The baseline intentionally supports only
+the benchmark's narrow shared-destination subset, and elapsed times are single-run observations,
+not performance claims. Methodology and limitations are documented in
+[docs/benchmarking.md](docs/benchmarking.md).
+
+The committed eligibility-trap scenario makes the architectural difference observable: joint
+optimization serves both shipments, while the greedy baseline commits the flexible shipment to the
+only vehicle eligible for the restricted shipment and serves one of two.
 
 ## Data and IP boundary
 
-All committed examples and tests are synthetic. Do not add RideAssign customer data, production
-coordinates, provider payloads, credentials, database schemas, or application-specific code.
+All committed examples, tests, and benchmarks must be synthetic. Do not add RideAssign customer
+data, production coordinates, routing-provider payloads copied from production, credentials,
+database schemas, private prompts, or application-specific policy code.
 
 Before making this repository public:
 
@@ -117,4 +129,4 @@ Before making this repository public:
 2. choose and add the intended open-source license
 3. complete dependency/license and secret-history scans
 4. add public contribution and conduct policies
-5. publish reproducible benchmarks against a documented baseline
+5. review benchmark methodology and claims for the intended audience
