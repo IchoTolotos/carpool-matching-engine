@@ -4,9 +4,23 @@ A provider-neutral Python core for jointly assigning passenger shipments to vehi
 their pickup and delivery stops. It is a technical extraction of matching work developed for
 RideAssign, with application policy and routing-provider operations kept outside the package.
 
-> **Status:** private technical extraction. Copyright is all rights reserved. No permission is
-> granted to use, copy, modify, publish, distribute, sublicense, or sell this software while a
-> future open-source license and public-release scope are under review.
+> **Status:** pre-public release candidate. The code is licensed under Apache-2.0, while repository
+> visibility remains private until the ownership and release-readiness checklist is approved.
+
+## At a glance
+
+```mermaid
+flowchart LR
+  A["Application policy"] -->|"vehicles, shipments, constraints, penalties"| C["Matching engine"]
+  P["Routing adapter"] -->|"directed duration + distance matrix"| C
+  C --> V["contract validation"]
+  V --> O["joint OR-Tools assignment + route ordering"]
+  O --> R["ordered routes + explicit drops + diagnostics"]
+```
+
+The core solves vehicle assignment and stop ordering in one model. That distinction matters when a
+locally attractive assignment can consume the only vehicle eligible for a later passenger. The
+fixed [greedy eligibility trap](docs/greedy-vs-joint.md) shows this failure mode step by step.
 
 ## What it demonstrates
 
@@ -43,6 +57,18 @@ make check
 ```
 
 `make check` runs Ruff, strict mypy, deterministic tests, coverage checks, and the package build.
+
+## Run the example
+
+After installing the development environment, run:
+
+```bash
+make example
+```
+
+The self-contained example uses invented coordinates and the synthetic straight-line matrix
+provider. It prints each vehicle's ordered route, served shipments, explicit drops, and objective.
+Production applications provide their own road-network matrix adapter.
 
 ## API sketch
 
@@ -117,16 +143,44 @@ The committed eligibility-trap scenario makes the architectural difference obser
 optimization serves both shipments, while the greedy baseline commits the flexible shipment to the
 only vehicle eligible for the restricted shipment and serves one of two.
 
+Observed with the pinned dependencies; objective and travel columns are deterministic for these
+fixtures, while elapsed time is intentionally omitted here:
+
+| Scenario | Solver | Served | Objective | Matrix travel (s) |
+| --- | --- | ---: | ---: | ---: |
+| balanced-clusters | OR-Tools | 6/6 | 1,424 | 1,424 |
+| balanced-clusters | greedy | 6/6 | 1,424 | 1,424 |
+| capacity-pressure | OR-Tools | 4/6 | 201,232 | 1,232 |
+| capacity-pressure | greedy | 4/6 | 201,232 | 1,232 |
+| vehicle-eligibility | OR-Tools | 4/4 | 1,508 | 1,508 |
+| vehicle-eligibility | greedy | 4/4 | 1,508 | 1,508 |
+| greedy-eligibility-trap | OR-Tools | **2/2** | **2,462** | 2,462 |
+| greedy-eligibility-trap | greedy | **1/2** | **101,422** | 1,422 |
+
+These four fixtures demonstrate behavior, not general superiority. For repeated observations on
+larger seeded synthetic problems, run:
+
+```bash
+.venv/bin/python -m benchmarks.scale \
+  --repetitions 5 \
+  --seconds-per-run 1 \
+  --hardware-label "your CPU or machine"
+```
+
+The scale suite reports the served range, best and median objective, and median/p95 in-process
+solver runtime for 4 vehicles/16 shipments, 8/32, and 16/64. See
+[scale benchmarking](docs/scale-benchmarking.md) for recorded results and limitations.
+
 ## Data and IP boundary
 
 All committed examples, tests, and benchmarks must be synthetic. Do not add RideAssign customer
 data, production coordinates, routing-provider payloads copied from production, credentials,
 database schemas, private prompts, or application-specific policy code.
 
-Before making this repository public:
+The exact release state, completed scans, and remaining ownership decision are tracked in the
+[public-release checklist](docs/public-release-checklist.md). Repository visibility must not change
+until that checklist's blocking approval is recorded.
 
-1. confirm company ownership and approval for the extracted algorithm
-2. choose and add the intended open-source license
-3. complete dependency/license and secret-history scans
-4. add public contribution and conduct policies
-5. review benchmark methodology and claims for the intended audience
+## License
+
+Licensed under the [Apache License 2.0](LICENSE). Contributions are accepted under the same license.
