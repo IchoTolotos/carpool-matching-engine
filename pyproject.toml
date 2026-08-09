@@ -8,12 +8,13 @@ version = "0.2.0"
 description = "Provider-neutral carpool assignment and route-ordering engine built on OR-Tools."
 readme = "README.md"
 requires-python = ">=3.12,<3.15"
-license = { file = "LICENSE" }
+license = "Apache-2.0"
 authors = [{ name = "Pablo Thiermann" }]
 dependencies = ["ortools==9.15.6755"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -62,12 +63,13 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "benchmarks/**" = ["T201"]
+"examples/**" = ["T201"]
 "tests/**" = ["D", "PLR2004", "S101"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src", "benchmarks", "tests"]
+files = ["src", "benchmarks", "examples", "tests"]
 
 [[tool.mypy.overrides]]
 module = ["ortools.*"]

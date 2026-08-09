@@ -60,5 +60,5 @@ There is no hidden fallback solver.
 
 The package is a library, not a service. Database access, HTTP endpoints, authentication,
 persistence, application logging, provider clients, and production configuration remain in the
-integrating application. This repository stores synthetic fixtures only and remains private and
-all-rights-reserved.
+integrating application. This repository stores synthetic fixtures only and is distributed under
+the Apache License 2.0 after the documented public-release gate is approved.
