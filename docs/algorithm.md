@@ -2,59 +2,73 @@
 
 ## Problem model
 
-The engine assigns passengers to drivers traveling toward one shared destination. Drivers have a
-fixed seat capacity. Passengers may be pinned to a driver, and both participant types may belong to
-groups governed by one explicit compatibility policy.
+The public model is an application-independent pickup-and-delivery problem:
 
-Pinned passengers form part of a driver's required baseline route. The detour constraint therefore
-measures the incremental cost of optional passengers against commitments already made to that
-driver. It does not silently reinterpret or remove pinned assignments.
+- `Vehicle` defines start and end locations, capacity, optional time windows, stop limits, and
+  absolute or over-direct route-duration limits.
+- `Shipment` defines pickup and delivery locations, demand size, pickup service time, optional time
+  windows and soft delivery targets, allowed vehicles, and whether dropping is forbidden or
+  penalized.
+- `TravelMatrix` provides directed duration and distance for every ordered pair of problem
+  locations.
+- `SearchConfig` defines one or more named, time-bounded OR-Tools attempts.
 
-## Stages
+Application concepts such as groups, pinned assignments, eligibility policy, service tiers, or
+product-specific priorities are not inferred by the core. The application compiles them into the
+public constraints, allowed-vehicle sets, required flags, penalties, and search configuration.
 
-### 1. Validation
+## Solve stages
 
-Participant ids, coordinates, capacities, constraints, pinned references, group compatibility, and
-execution limits are validated before routing begins. Invalid state is rejected with a stable error
-code.
+### 1. Validate explicit contracts
 
-### 2. Baselines and candidate edges
+The engine rejects malformed participant ids, locations, coordinates, capacities, time bounds,
+eligibility references, penalties, search attempts, and matrices before invoking OR-Tools. The
+matrix location set must exactly match the problem location set; duration and distance tables must
+both be square and contain non-negative integer values with zero diagonals.
 
-The routing provider builds one baseline per driver. Each unpinned passenger is projected onto that
-baseline geometry. The engine calculates:
+### 2. Build one pickup-and-delivery model
 
-- perpendicular pickup distance to the route
-- progress along the route
-- a lower bound on added travel time, using the passenger-to-destination duration and the remaining
-  baseline duration at the projection point
+The OR-Tools routing model contains a start and end node for every vehicle and paired pickup and
+delivery nodes for every shipment. Assignment and ordering are decision variables in the same
+model. Constraints enforce:
 
-Natural-carpool mode discards edges outside the pickup radius or lower-bound detour limit. Full
-coverage mode keeps every group-compatible edge and lets real-route validation decide feasibility.
+- pickup and delivery on the same vehicle, with pickup no later than delivery
+- vehicle capacity over the route
+- shipment-to-vehicle eligibility
+- vehicle, pickup, and delivery time windows
+- maximum pickup-stop counts
+- absolute and over-direct route-duration limits
+- required shipment service or explicit optional-shipment dropping
 
-### 3. Minimum-cost maximum flow
+Directed matrix duration plus pickup service time is the arc cost and the time-dimension transit.
+Optional shipment drops and soft lower time bounds add their configured penalties. Matrix distance
+does not affect the objective; it is accumulated for result reporting.
 
-The assignment graph contains source-to-passenger edges, passenger-to-driver candidate edges, and
-driver-to-sink capacity edges. Successive shortest augmenting paths with reduced-cost potentials
-maximize assigned passenger count and then minimize total integer candidate cost.
+### 3. Run the bounded search portfolio
 
-For `P` passengers, `D` drivers, and `E` candidate edges, each augmentation uses Dijkstra over the
-residual graph. The practical upper bound is `O(P * E log(P + D))` for unit passenger demand.
+Every configured attempt builds an independent model and runs its named first-solution strategy and
+local-search metaheuristic for its time limit. The engine records whether each attempt solved, its
+objective when available, and its elapsed time. The feasible attempt with the lowest objective is
+selected. If none is feasible within the configured attempts, the engine raises `NO_SOLUTION`; it
+does not silently return a partial result or switch algorithms.
 
-### 4. Real-route validation and repair
+### 4. Extract explicit results
 
-The routing provider orders assigned stops and returns the route duration. When a route exceeds the
-detour limit, the engine evaluates removing each optional passenger on that route, blacklists the
-edge with the largest measured duration gain, and solves the flow problem again. Every repair and
-routing call is bounded by caller-supplied limits.
+For every vehicle, the result includes ordered start, pickup, delivery, and end stops with solved
+arrival times, served shipment ids, route duration and distance, and direct-route duration and
+distance. Dropped shipment ids are returned separately. Top-level diagnostics contain the selected
+objective, total portfolio runtime, and every per-attempt diagnostic.
 
-Natural-carpool mode may return unassigned passengers. Full-coverage mode throws when any passenger
-cannot be placed. Exhausted repair or routing-call budgets also throw; there is no partial hidden
-fallback.
+## What is and is not proven
 
-## What is and is not optimal
+A returned route set is feasible for the validated model and supplied matrix. The selected
+objective is the best value found by the configured attempts.
 
-The min-cost-flow assignment is exact for the generated candidate graph and cost function. The
-complete routing problem is not globally optimized: candidate costs are lower-bound surrogates, and
-the route-repair phase is a deterministic bounded heuristic. Public benchmarks should therefore
-compare the complete outcome against explicit baselines rather than describing the engine as a
-globally optimal vehicle-routing solver.
+It is not a certificate of global optimality. OR-Tools routing uses constructive and local-search
+strategies here, and every attempt is stopped by a wall-clock limit. A longer or different search
+portfolio may find a lower objective. Results can also only be as representative as the application
+policy and travel matrix supplied to the core.
+
+The synthetic benchmark therefore reports observed outcomes against a named baseline. It does not
+describe the engine as globally optimal and does not generalize fixed synthetic results to
+production demand or road networks.
