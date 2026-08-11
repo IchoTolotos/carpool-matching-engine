@@ -5,9 +5,6 @@ their pickup and delivery stops. It is a technical extraction of matching work d
 [RideAssign](https://www.ride-assign.com), with application policy and routing-provider operations
 kept outside the package.
 
-> **Status:** pre-public release candidate. The code is licensed under Apache-2.0, while repository
-> visibility remains private until the ownership and release-readiness checklist is approved.
-
 ## At a glance
 
 ```mermaid
@@ -177,10 +174,6 @@ solver runtime for 4 vehicles/16 shipments, 8/32, and 16/64. See
 All committed examples, tests, and benchmarks must be synthetic. Do not add RideAssign customer
 data, production coordinates, routing-provider payloads copied from production, credentials,
 database schemas, private prompts, or application-specific policy code.
-
-The exact release state, completed scans, and remaining ownership decision are tracked in the
-[public-release checklist](docs/public-release-checklist.md). Repository visibility must not change
-until that checklist's blocking approval is recorded.
 
 ## License
 
