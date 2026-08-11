@@ -2,7 +2,8 @@
 
 A provider-neutral Python core for jointly assigning passenger shipments to vehicles and ordering
 their pickup and delivery stops. It is a technical extraction of matching work developed for
-RideAssign, with application policy and routing-provider operations kept outside the package.
+[RideAssign](https://www.ride-assign.com), with application policy and routing-provider operations
+kept outside the package.
 
 > **Status:** pre-public release candidate. The code is licensed under Apache-2.0, while repository
 > visibility remains private until the ownership and release-readiness checklist is approved.
